@@ -3,9 +3,12 @@ package main
 import (
 	"log"
 	"time"
+	"net"
+    "encoding/json"
 
 	lua "github.com/yuin/gopher-lua"
 	luar "layeh.com/gopher-luar"
+    luajson "github.com/layeh/gopher-json"
 
 	"github.com/micro-editor/micro/v2/internal/action"
 	"github.com/micro-editor/micro/v2/internal/buffer"
@@ -60,6 +63,37 @@ func luaImportMicro() *lua.LTable {
 			timerChan <- f
 		})
 	}))
+	ulua.L.SetField(pkg, "Cue", luar.New(ulua.L, func(c net.Conn, f func(lua.LValue)) {
+		done := make(chan struct{})
+		out := make(chan any)
+		dec := json.NewDecoder(c)
+
+		go func() {
+		    defer close(done)
+		    for {
+		        var v any
+		        if err := dec.Decode(&v); err != nil {
+		            return
+		        }
+		        out <- v
+		    }
+		}()
+		
+		go func() {
+			loop: for {
+				select {
+				case sig := <- out:
+					cueChan <- cue {
+						Action:	f,
+						Data:	sig,
+					}
+				case <-done:
+					break loop
+				}
+			}
+		}()
+	}))
+	ulua.L.SetField(pkg, "ToJson", luar.New(ulua.L, luajson.Encode))
 
 	return pkg
 }

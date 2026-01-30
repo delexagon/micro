@@ -27,7 +27,14 @@ import (
 	"github.com/micro-editor/micro/v2/internal/util"
 	"github.com/micro-editor/tcell/v2"
 	lua "github.com/yuin/gopher-lua"
+    luajson "github.com/layeh/gopher-json"
+   	ulua "github.com/micro-editor/micro/v2/internal/lua"
 )
+
+type cue struct {
+	Action	func(lua.LValue)
+	Data	any
+}
 
 var (
 	// Command line flags
@@ -43,6 +50,7 @@ var (
 	sighup chan os.Signal
 
 	timerChan chan func()
+	cueChan chan cue
 )
 
 func InitFlags() {
@@ -320,6 +328,8 @@ func main() {
 		screen.TermMessage(err)
 	}
 
+	cueChan = make(chan cue)
+
 	config.InitRuntimeFiles(true)
 	config.InitPlugins()
 
@@ -515,6 +525,9 @@ func DoEvent() {
 		}
 	case f := <-timerChan:
 		f()
+	case cue := <-cueChan:
+		val := luajson.DecodeValue(ulua.L, cue.Data)
+		cue.Action(val) 
 	case <-sighup:
 		exit(0)
 	case <-util.Sigterm:
